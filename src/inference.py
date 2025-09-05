@@ -4,6 +4,7 @@ from model import SeedGPT
 
 weights = torch.load("",map_location="cuda")
 new_weights = {k.replace("module.", ""): v for k, v in weights.items()}
+new_weights = {k.replace("module._orig_mod.", ""): v for k, v in weights.items()}
 
 model = SeedGPT.from_pretrained()
 model.load_state_dict(new_weights)

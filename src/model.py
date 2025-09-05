@@ -119,14 +119,27 @@ class SeedGPT(nn.Module):
             nn.init.normal_(module.weight, mean=0.0, std=std)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
-            
+    def configure_optimizer(self,weight_decay,lr):
+        param_dict = {name:param for name,param in self.named_parameters()}
+        param_dict = {pn:p for pn,p in param_dict.items() if p.requires_grad}
+        decay_param = [p for pn,p in param_dict.items() if p.dim()>=2]
+        nondecay_param = [p for pn,p in param_dict.items() if p.dim()<2]
+        optim_param = [
+            {"params" : decay_param, "weight_decay" : weight_decay},
+            {"params" : nondecay_param, "weight_decay" : 0.0}
+        ]
+        opt = torch.optim.AdamW(optim_param,lr=lr,betas=(0.9,0.95),eps=1e-8,fused=True)
+        return opt
     @classmethod
-    def from_pretrained(cls,model_type="distilgpt2"):
-        config_args = {
-            "n_layer" : 12,
-            "n_head" : 12,
-            "n_embd" : 768
-        }
+    def from_pretrained(cls,model_type):
+        if model_type not in ["Lite","Tiny","Mini"]:
+            return "Provide a valid model Lite/Tiny/Mini"
+        if model_type == "Lite":
+            config_args = {"n_layer" : 6,"n_head" : 6,"n_embd" : 768}
+        elif model_type == "Tiny":
+            config_args = {"n_layer" : 12,"n_head" : 12,"n_embd" : 768}
+        elif model_type == "Mini":
+            config_args = {"n_layer" : 24,"n_head" : 16,"n_embd" : 1024}
         config_args["block_size"] = 1024
         config_args["vocab_size"] = 50257
         
@@ -136,10 +149,16 @@ class SeedGPT(nn.Module):
         model_weights_keys = model_weights.keys()
         model_weights_keys = [k for k in model_weights_keys if not k.endswith(".attn.bias")]
         
-        print(f"Loading weights \n") 
+        print(f"Loading weights of {model_type} \n") 
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        gpt_hf_weights = torch.load("./weights/gpt2_model.bin", map_location=torch.device(device=device))
+        if model_type == "Lite":
+            gpt_hf_weights = torch.load("./weights/distgpt2_model.bin", map_location=torch.device(device=device))
+        elif model_type == "Tiny":
+            gpt_hf_weights = torch.load("./weights/gpt2_model.bin", map_location=torch.device(device=device))
+        elif model_type == "Mini":
+            gpt_hf_weights = torch.load("./weights/gpt2-medium_model.bin", map_location=torch.device(device=device))
+            
         gpt_hf_weights_keys = gpt_hf_weights.keys()
         gpt_hf_weights_keys = [k for k in gpt_hf_weights_keys if not k.endswith(".attn.bias")]
         gpt_hf_weights_keys = [k for k in gpt_hf_weights_keys if not k.endswith(".attn.masked_bias")]
@@ -161,5 +180,5 @@ class SeedGPT(nn.Module):
         return model
 
 if __name__=="__main__":
-    model = SeedGPT.from_pretrained()
+    model = SeedGPT.from_pretrained(model_type="Lite")
     print(model)

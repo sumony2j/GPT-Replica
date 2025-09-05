@@ -1,12 +1,8 @@
 from model import SeedGPT,GPTConfig
-import tiktoken
 import torch
 import os
-from dataloader import DataLoaderLite,TrainingDataset
+from dataloader import ShardedDataLoaderLite
 from train import  train
-from train_other import train_other
-from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group,destroy_process_group,get_rank,get_world_size,is_initialized
 
@@ -37,34 +33,21 @@ def cleanup_ddp():
 
 if __name__ == "__main__":
     ddp,device,local_rank,world_rank,rank = setup_ddp()
-    Dataset = TrainingDataset(Block_Size=256,file_path="./shakespeare.txt")
-    Sampler = DistributedSampler(Dataset,num_replicas=world_rank,
-                                 rank=local_rank,shuffle=True)
-    Data = DataLoader(dataset=Dataset,sampler=Sampler,batch_size=256)
-    #Data = DataLoaderLite(batch=32,context=64,rank=local_rank,world=world_rank,file_path="./shakespeare.txt")
-    model = SeedGPT.from_pretrained()
-    #model = SeedGPT(GPTConfig(vocab_size=50304,block_size=1024,
-    #                          n_embd=768,n_head=12,n_layer=12))
+    train_data = ShardedDataLoaderLite(batch=128,context=256,rank=local_rank,world=world_rank,dir="/WSpace/dataset/fineweb-edu-dedup-10b/fineweb-edu-10b/train")
+    val_data = ShardedDataLoaderLite(batch=128,context=256,rank=local_rank,world=world_rank,dir="/WSpace/dataset/fineweb-edu-dedup-10b/fineweb-edu-10b/val")
+    model = SeedGPT.from_pretrained(model_type="Tiny")
+    #model = SeedGPT(GPTConfig(vocab_size=50304,block_size=1024,n_embd=768,n_head=12,n_layer=12))
     torch.manual_seed(42)   
     
+    torch.set_float32_matmul_precision("high")
     model.to(device=device)
+    opt = model.configure_optimizer(weight_decay=0.1,lr=6e-4)
     model = torch.compile(model=model,backend="inductor", mode="max-autotune")
     if ddp:
         model = DDP(model,device_ids=[local_rank],output_device=local_rank)
-    #train(model=model,epochs=10,data=Data)
-    train_other(model=model,epochs=10,data=Data)
-    cleanup_ddp()
     
+    train(model=model,steps=10,opt=opt,lr_rate=1e-4,train_data=train_data,
+          val_data=val_data,device=device.type)
+    cleanup_ddp()
     torch.save(model.state_dict(),"SeedGPT.pt")
-    """
-    encoder = tiktoken.get_encoding("gpt2")
-    encoded_txt = encoder.encode("The little boy")
-    tokens = torch.tensor(encoded_txt,dtype=torch.long)
-    tokens = tokens.unsqueeze(0).repeat(5,1)
-    x = tokens.to(device)
-    output = model.generate(x,max_token=30)
-    for i in range(5):
-        out_tokens = output[i].tolist()
-        decoded = encoder.decode(out_tokens)
-        print(f">> {decoded}")
-    """
+    

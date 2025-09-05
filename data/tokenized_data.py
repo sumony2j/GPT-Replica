@@ -4,7 +4,52 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import multiprocessing as mp
+import re
+import unicodedata
+from bs4 import BeautifulSoup
+from langdetect import detect, LangDetectException
 
+def clean_text(text, min_length=50, lang='en'):
+    """
+    Clean a single text string from web dataset.
+
+    Args:
+        text (str): Raw input text.
+        min_length (int): Minimum character length to keep text.
+        lang (str): Language to filter (e.g., 'en' for English).
+
+    Returns:
+        str or None: Cleaned text, or None if filtered out.
+    """
+    if not isinstance(text, str):
+        return None
+
+    # 1. Strip HTML tags
+    text = BeautifulSoup(text, "html.parser").get_text(separator=" ")
+
+    # 2. Normalize Unicode
+    text = unicodedata.normalize("NFC", text)
+
+    # 3. Remove zero-width and control characters
+    text = re.sub(r'[\u200B-\u200D\uFEFF]', '', text)
+    text = re.sub(r'[\r\n\t]+', ' ', text)
+
+    # 4. Remove multiple spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # 5. Minimum length filter
+    if len(text) < min_length:
+        return None
+
+    # 6. Language detection
+    try:
+        detected_lang = detect(text)
+        if detected_lang != lang:
+            return None
+    except LangDetectException:
+        return None
+
+    return text
 
 encoder = tiktoken.get_encoding("gpt2")
 end_tok = encoder._special_tokens["<|endoftext|>"]
@@ -16,8 +61,7 @@ def tokenizer(data):
 
 def write_file(filename,tokens):
     buffer = np.array(tokens,dtype=np.uint32)
-    with open(file=filename,mode="wb") as f:
-        buffer.tofile(f)
+    np.save(filename,buffer)
     print(f"[INFO] {len(tokens)} tokens have been saved in {filename}\n")
 
 def load_text_from_parquet(DIR):
