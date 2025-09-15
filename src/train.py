@@ -7,22 +7,24 @@ from torch.distributed import get_rank,all_reduce,ReduceOp
 from torch.optim.lr_scheduler import LambdaLR
 
 def get_lr(opt,max_step,warmup_step=1000,max_lr=6e-4):
+    min_lr = max_lr*0.1
     def lr_lambda(iter):
-        min_lr = max_lr*0.1
         if iter < warmup_step:
-            return max_lr * (iter+1)/warmup_step
+            return (iter+1)/warmup_step
         elif iter > max_step:
-            return min_lr
+            return min_lr / max_lr
         else:
             decay_ration = (iter - warmup_step) / (max_step - warmup_step)
             coff = 0.5 * (1.0 + math.cos(math.pi * decay_ration))
-            return min_lr + coff * (max_lr - min_lr)
+            return (min_lr/max_lr) + coff * (1 - min_lr/max_lr)
     return LambdaLR(optimizer=opt,lr_lambda=lr_lambda)
- 
+
 def train(model, steps, opt, train_data:ShardedDataLoaderLite, val_data:ShardedDataLoaderLite, lr_rate, device="cpu"):
-    
-    scheduler = get_lr(opt=opt,max_step=200000,warmup_step=10000)
-    
+
+    scaler = torch.amp.GradScaler()
+    scheduler = get_lr(opt=opt,max_step=steps,warmup_step=steps*0.05,max_lr=lr_rate)
+    ddp = int(os.environ.get("RANK",-1)) != -1
+
     ## Validation Eval
     for i in range(steps):
         t0 = time.time()
@@ -39,25 +41,28 @@ def train(model, steps, opt, train_data:ShardedDataLoaderLite, val_data:ShardedD
                         _,val_loss = model(val_x,val_y)
                     total_loss += val_loss.detach()
                 validation_loss = total_loss/val_step
-            ddp = int(os.environ.get("RANK",-1)) != -1
             if ddp:
                 all_reduce(validation_loss,op=ReduceOp.AVG)
             if get_rank() == 0:
-                print(f"validation loss : {validation_loss.item():.4f}")   
+                print(f"validation loss : {validation_loss.item():.4f}")
 
         model.train()
         opt.zero_grad()
-        
+
         x,y = train_data.next_batch()
-        x,y = x.to(device), y.to(device)       
+        x,y = x.to(device), y.to(device)
         with torch.autocast(device_type=device,dtype=torch.bfloat16):
             _,loss = model(x,y)
-        
-        loss.backward()
-        
-        norm = torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
-        
-        opt.step()
+
+        scaler.scale(loss).backward()
+        #loss.backward()
+
+        scaler.unscale_(opt)
+        norm = torch.nn.utils.clip_grad_norm_(model.parameters(),2.0)
+
+        #opt.step()
+        scaler.step(opt)
+        scaler.update()
         scheduler.step()
         if device.startswith("cuda"):
             torch.cuda.synchronize()
@@ -68,4 +73,3 @@ def train(model, steps, opt, train_data:ShardedDataLoaderLite, val_data:ShardedD
         current_lr = scheduler.get_last_lr()[0]
         if get_rank() == 0:
             print(f"step : {i}, train loss : {loss.item():.2f}, learning rate : {current_lr:.2e}, norm : {norm.item():.2f}, time : {dt:.2f}ms, tok/sec : {tokens_per_sec:.2f}")
-        

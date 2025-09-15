@@ -131,7 +131,7 @@ class SeedGPT(nn.Module):
         opt = torch.optim.AdamW(optim_param,lr=lr,betas=(0.9,0.95),eps=1e-8,fused=True)
         return opt
     @classmethod
-    def from_pretrained(cls,model_type):
+    def from_pretrained(cls,model_type,weight_path=None):
         if model_type not in ["Lite","Tiny","Mini"]:
             return "Provide a valid model Lite/Tiny/Mini"
         if model_type == "Lite":
@@ -145,20 +145,26 @@ class SeedGPT(nn.Module):
         
         config = GPTConfig(**config_args)
         model = cls(config)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if weight_path is not None:
+            weights = torch.load(weight_path, map_location=torch.device(device=device))
+            weights_ = {k.replace("module._orig_mod.", ""): v for k, v in weights.items()}
+            model_weights = {k.replace("module.", ""): v for k, v in weights_.items()}
+            model.load_state_dict(model_weights)
+            return model
         model_weights = model.state_dict()
         model_weights_keys = model_weights.keys()
         model_weights_keys = [k for k in model_weights_keys if not k.endswith(".attn.bias")]
         
         print(f"Loading weights of {model_type} \n") 
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
         if model_type == "Lite":
             gpt_hf_weights = torch.load("./weights/distgpt2_model.bin", map_location=torch.device(device=device))
         elif model_type == "Tiny":
             gpt_hf_weights = torch.load("./weights/gpt2_model.bin", map_location=torch.device(device=device))
         elif model_type == "Mini":
             gpt_hf_weights = torch.load("./weights/gpt2-medium_model.bin", map_location=torch.device(device=device))
-            
+    
         gpt_hf_weights_keys = gpt_hf_weights.keys()
         gpt_hf_weights_keys = [k for k in gpt_hf_weights_keys if not k.endswith(".attn.bias")]
         gpt_hf_weights_keys = [k for k in gpt_hf_weights_keys if not k.endswith(".attn.masked_bias")]
