@@ -2,7 +2,7 @@ import os
 import time
 import math
 import torch
-from dataloader import ShardedDataLoaderLite
+from src.dataloader import ShardedDataLoaderLite
 from torch.distributed import get_rank,all_reduce,ReduceOp
 from torch.optim.lr_scheduler import LambdaLR
 

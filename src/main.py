@@ -1,8 +1,8 @@
-from model import SeedGPT,GPTConfig
+from src.model import SeedGPT,GPTConfig
 import torch
 import os
-from dataloader import ShardedDataLoaderLite
-from train import  train
+from src.dataloader import ShardedDataLoaderLite
+from src.train import  train
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group,destroy_process_group,get_rank,get_world_size,is_initialized
 
