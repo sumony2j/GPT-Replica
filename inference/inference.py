@@ -2,12 +2,12 @@ import torch
 import tiktoken
 from src.model import SeedGPT
 
-weights = torch.load("",map_location="cuda")
-new_weights = {k.replace("module.", ""): v for k, v in weights.items()}
-new_weights = {k.replace("module._orig_mod.", ""): v for k, v in weights.items()}
+#weights = torch.load("",map_location="cuda")
+#new_weights = {k.replace("module.", ""): v for k, v in weights.items()}
+#new_weights = {k.replace("module._orig_mod.", ""): v for k, v in weights.items()}
 
-model = SeedGPT.from_pretrained()
-model.load_state_dict(new_weights)
+model = SeedGPT.from_pretrained(model_type="Lite")
+#model.load_state_dict(new_weights)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
