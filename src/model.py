@@ -159,11 +159,11 @@ class SeedGPT(nn.Module):
         print(f"Loading weights of {model_type} \n") 
 
         if model_type == "Lite":
-            gpt_hf_weights = torch.load("./weights/distgpt2_model.bin", map_location=torch.device(device=device))
+            gpt_hf_weights = torch.load("./weights/Lite.bin", map_location=torch.device(device=device))
         elif model_type == "Tiny":
-            gpt_hf_weights = torch.load("./weights/gpt2_model.bin", map_location=torch.device(device=device))
+            gpt_hf_weights = torch.load("./weights/Tiny.bin", map_location=torch.device(device=device))
         elif model_type == "Mini":
-            gpt_hf_weights = torch.load("./weights/gpt2-medium_model.bin", map_location=torch.device(device=device))
+            gpt_hf_weights = torch.load("./weights/Mini.bin", map_location=torch.device(device=device))
     
         gpt_hf_weights_keys = gpt_hf_weights.keys()
         gpt_hf_weights_keys = [k for k in gpt_hf_weights_keys if not k.endswith(".attn.bias")]
